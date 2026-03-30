@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Signer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- Top bar -->
+  <div id="topbar">
+    <span class="brand">&#9998; PDF Signer</span>
+    <div class="topbar-sep"></div>
+
+    <!-- Open PDF file input -->
+    <div class="file-btn-wrap">
+      <button class="btn" id="open-pdf-btn">&#128196; Open PDF</button>
+      <input type="file" id="pdf-file-input" accept=".pdf" title="Open PDF" />
+    </div>
+
+    <button class="btn primary" id="save-btn" disabled>&#8681; Save PDF</button>
+    <span id="topbar-filename" style="color:var(--text-muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;"></span>
+  </div>
+
+  <!-- Body -->
+  <div id="body">
+
+    <!-- Sidebar -->
+    <div id="sidebar">
+
+      <!-- Mode toggle -->
+      <div class="sidebar-section">
+        <div class="section-title">Mode</div>
+        <div id="mode-toggle">
+          <input type="radio" id="mode-sig" name="mode" value="signature" checked />
+          <label for="mode-sig">Signature</label>
+          <input type="radio" id="mode-txt" name="mode" value="text" />
+          <label for="mode-txt">Text</label>
+        </div>
+      </div>
+
+      <!-- Signature section -->
+      <div class="sidebar-section" id="sig-section">
+        <div class="section-title">Signature Image</div>
+
+        <div class="file-btn-wrap">
+          <button class="btn" style="width:100%;">&#128444; Browse image&hellip;</button>
+          <input type="file" id="sig-file-input" accept="image/*" title="Load signature image" />
+        </div>
+
+        <div id="sig-filename">(none)</div>
+
+        <div id="sig-preview-wrap">
+          <img id="sig-preview-img" alt="Signature preview" />
+        </div>
+
+        <div class="size-row">
+          <label>W:</label>
+          <input type="number" id="sig-w" class="num-input" value="120" min="10" max="800" />
+          <label>H:</label>
+          <input type="number" id="sig-h" class="num-input" value="50" min="10" max="600" />
+        </div>
+        <div class="hint">Drag on PDF to place &amp; resize. Or set W/H above.</div>
+      </div>
+
+      <!-- Text section -->
+      <div class="sidebar-section" id="text-section" style="display:none;">
+        <div class="section-title">Text</div>
+        <textarea id="text-input" placeholder="Type text to insert&hellip;" rows="3"></textarea>
+        <div class="size-row">
+          <label>Size:</label>
+          <input type="number" id="font-size" class="num-input" value="12" min="4" max="144" />
+        </div>
+        <div class="color-row">
+          <label>Color:</label>
+          <input type="color" id="font-color" value="#000000" />
+          <span id="font-color-hex" style="font-size:11px;color:var(--text-muted);">#000000</span>
+        </div>
+        <div class="hint">Click on PDF to place text.</div>
+      </div>
+
+      <!-- Placements list -->
+      <div class="sidebar-section placements-section" style="flex:1;display:flex;flex-direction:column;gap:8px;">
+        <div class="section-title">Placements</div>
+        <ul id="placements-list"></ul>
+        <button class="btn small danger" id="undo-btn" disabled>&#8617; Undo last</button>
+      </div>
+
+    </div><!-- /sidebar -->
+
+    <!-- Canvas area -->
+    <div id="canvas-wrap">
+      <div id="drop-hint">
+        <div class="drop-icon">&#128196;</div>
+        <p>Drop a PDF here or click <strong>Open PDF</strong></p>
+        <small>You can also drop an image to use as signature</small>
+      </div>
+      <canvas id="main-canvas"></canvas>
+    </div>
+
+  </div><!-- /body -->
+</div><!-- /app -->
+
+<!-- Loading overlay -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <span id="loading-text">Processing&hellip;</span>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
