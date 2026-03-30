@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(start pythonw:*)",
+      "Bash(python -c \":*)",
+      "Bash(start c:/Users/User/Desktop/code/signer/test_hebrew.pdf)",
+      "Bash(python -c \"from pathlib import Path; print\\(''Arial:'', Path\\(''C:/Windows/Fonts/arial.ttf''\\).exists\\(\\)\\)\")"
+    ]
+  }
+}
