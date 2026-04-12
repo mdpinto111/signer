@@ -332,6 +332,29 @@ html, body {
 .del-btn:hover { color: var(--danger); background: #2a1a1a; }
 
 /* ── Canvas area ── */
+#canvas-outer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#statusbar {
+  height: 30px;
+  min-height: 30px;
+  background: #13131f;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 20px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+#statusbar span { color: var(--text-muted); }
+#statusbar .ok  { color: #6adf6a; }
+#statusbar .warn { color: #f7c94f; }
+
 #canvas-wrap {
   flex: 1;
   overflow: auto;

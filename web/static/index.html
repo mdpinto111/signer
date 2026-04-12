@@ -91,13 +91,20 @@
     </div><!-- /sidebar -->
 
     <!-- Canvas area -->
-    <div id="canvas-wrap">
-      <div id="drop-hint">
-        <div class="drop-icon">&#128196;</div>
-        <p>Drop a PDF here or click <strong>Open PDF</strong></p>
-        <small>You can also drop an image to use as signature</small>
+    <div id="canvas-outer">
+      <div id="statusbar" style="display:none;">
+        <span id="status-pages"></span>
+        <span id="status-sig"></span>
+        <span id="status-hint"></span>
       </div>
-      <canvas id="main-canvas"></canvas>
+      <div id="canvas-wrap">
+        <div id="drop-hint">
+          <div class="drop-icon">&#128196;</div>
+          <p>Drop a PDF here or click <strong>Open PDF</strong></p>
+          <small>You can also drop an image to use as signature</small>
+        </div>
+        <canvas id="main-canvas"></canvas>
+      </div>
     </div>
 
   </div><!-- /body -->

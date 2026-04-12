@@ -46,6 +46,10 @@ const loadingTxt   = document.getElementById('loading-text');
 const toastEl      = document.getElementById('toast');
 const topFilename  = document.getElementById('topbar-filename');
 const modeInputs   = document.querySelectorAll('input[name="mode"]');
+const statusBar    = document.getElementById('statusbar');
+const statusPages  = document.getElementById('status-pages');
+const statusSig    = document.getElementById('status-sig');
+const statusHint   = document.getElementById('status-hint');
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
@@ -107,16 +111,11 @@ function pdfToCanvas(pageIdx, px, py) {
   };
 }
 
-/** Get canvas coords relative to the canvas element from a mouse/touch event. */
+/** Get canvas coords relative to the canvas element from a mouse/touch event.
+ *  Uses e.offsetX/Y which the browser computes natively relative to the target
+ *  element — correct regardless of scroll position or flexbox centering. */
 function eventToCanvas(e) {
-  const rect = canvas.getBoundingClientRect();
-  // account for scroll in the wrapper
-  const scrollX = canvasWrap.scrollLeft;
-  const scrollY = canvasWrap.scrollTop;
-  return {
-    x: e.clientX - rect.left + scrollX,
-    y: e.clientY - rect.top  + scrollY,
-  };
+  return { x: e.offsetX, y: e.offsetY };
 }
 
 // ── Canvas rendering ──────────────────────────────────────────────────────────
@@ -250,6 +249,42 @@ function drawFrame() {
   }
 }
 
+// ── Status bar ────────────────────────────────────────────────────────────────
+
+function updateStatusBar() {
+  if (!S.pages.length) { statusBar.style.display = 'none'; return; }
+  statusBar.style.display = 'flex';
+
+  statusPages.className = 'ok';
+  statusPages.textContent = `PDF: ${S.pages.length} page(s) loaded`;
+
+  if (S.sigImg) {
+    statusSig.className = 'ok';
+    statusSig.textContent = 'Signature: loaded';
+  } else {
+    statusSig.className = 'warn';
+    statusSig.textContent = 'Signature: none';
+  }
+
+  if (S.mode === 'signature') {
+    if (S.sigImg) {
+      statusHint.textContent = 'Click or drag on the PDF to place signature';
+    } else {
+      statusHint.className = 'warn';
+      statusHint.textContent = '← Load a signature image first';
+    }
+  } else {
+    const txt = textInput.value.trim();
+    if (txt) {
+      statusHint.className = 'ok';
+      statusHint.textContent = 'Click on the PDF to place text';
+    } else {
+      statusHint.className = 'warn';
+      statusHint.textContent = '← Type text in the sidebar first';
+    }
+  }
+}
+
 // requestAnimationFrame loop
 let rafId = null;
 function scheduleRender() {
@@ -283,9 +318,10 @@ async function loadPDF(file) {
     canvas.height = totalCanvasHeight();
 
     renderPlacementsList();
+    updateStatusBar();
 
     // Load page images in parallel
-    await Promise.all(S.pages.map((p, i) => loadPageImage(i)));
+    await Promise.all(S.pages.map((_, i) => loadPageImage(i)));
 
     scheduleRender();
     showToast(`Loaded ${S.pages.length} page(s)`, 'success');
@@ -330,6 +366,7 @@ async function loadSignature(file) {
       sigPreview.src    = url;
       sigPreview.style.display = 'block';
       sigFilename.textContent  = file.name;
+      updateStatusBar();
       scheduleRender();
     };
     img.src = url;
@@ -451,6 +488,7 @@ function renderPlacementsList() {
 canvas.addEventListener('mousedown', (e) => {
   if (!S.pages.length) return;
   if (e.button !== 0) return;
+  e.preventDefault();
   const pos = eventToCanvas(e);
   S.dragStart  = pos;
   S.isDragging = false;
@@ -459,6 +497,7 @@ canvas.addEventListener('mousedown', (e) => {
 });
 
 canvas.addEventListener('mousemove', (e) => {
+  if (!S.pages.length) return;
   const pos = eventToCanvas(e);
   S.mousePos = pos;
   if (S.dragStart) S.isDragging = true;
@@ -466,46 +505,43 @@ canvas.addEventListener('mousemove', (e) => {
 });
 
 canvas.addEventListener('mouseleave', () => {
-  S.mousePos = { x: -9999, y: -9999 };
+  S.mousePos   = { x: -9999, y: -9999 };
   S.isDragging = false;
   scheduleRender();
 });
 
-canvas.addEventListener('mouseup', (e) => {
+// mouseup on window so releasing outside the canvas still registers
+window.addEventListener('mouseup', (e) => {
   if (!S.pages.length || !S.dragStart) return;
   if (e.button !== 0) return;
 
-  const pos = eventToCanvas(e);
-  const x0 = S.dragStart.x, y0 = S.dragStart.y;
-  const x1 = pos.x, y1 = pos.y;
-  const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+  // Compute release position relative to canvas
+  const rect = canvas.getBoundingClientRect();
+  const pos = {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top,
+  };
 
+  const x0 = S.dragStart.x, y0 = S.dragStart.y;
+  const x1 = pos.x,         y1 = pos.y;
+  const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
   const dragged = dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD;
 
   if (S.mode === 'signature') {
     if (!S.sigImg) {
       showToast('Load a signature image first', 'error');
     } else {
-      let cx, cy, w, h;
       if (dragged) {
         const rx0 = Math.min(x0, x1), ry0 = Math.min(y0, y1);
-        w = Math.round(Math.abs(x1 - x0) / ZOOM);
-        h = Math.round(Math.abs(y1 - y0) / ZOOM);
-        w = Math.max(4, w);
-        h = Math.max(4, h);
-        // Update spinboxes
-        sigW.value = w;
-        sigH.value = h;
-        S.sigW = w;
-        S.sigH = h;
+        const w = Math.max(4, Math.round(Math.abs(x1 - x0) / ZOOM));
+        const h = Math.max(4, Math.round(Math.abs(y1 - y0) / ZOOM));
+        sigW.value = w;  sigH.value = h;
+        S.sigW = w;      S.sigH = h;
         const pdf = canvasToPdf(rx0, ry0);
-        cx = pdf.x; cy = pdf.y;
-        addPlacement({ type: 'signature', page: pdf.page, cx, cy, w, h });
+        addPlacement({ type: 'signature', page: pdf.page, cx: pdf.x, cy: pdf.y, w, h });
       } else {
         const pdf = canvasToPdf(x0, y0);
-        w  = S.sigW;
-        h  = S.sigH;
-        addPlacement({ type: 'signature', page: pdf.page, cx: pdf.x, cy: pdf.y, w, h });
+        addPlacement({ type: 'signature', page: pdf.page, cx: pdf.x, cy: pdf.y, w: S.sigW, h: S.sigH });
       }
     }
   } else if (S.mode === 'text') {
@@ -583,13 +619,14 @@ modeInputs.forEach(input => {
     sigSection.style.display  = S.mode === 'signature' ? '' : 'none';
     textSection.style.display = S.mode === 'text'      ? '' : 'none';
     S.mousePos = { x: -9999, y: -9999 };
+    updateStatusBar();
     scheduleRender();
   });
 });
 
 // ── Text input → re-render ghost ──────────────────────────────────────────────
 
-textInput.addEventListener('input', scheduleRender);
+textInput.addEventListener('input', () => { updateStatusBar(); scheduleRender(); });
 fontSizeEl.addEventListener('input', scheduleRender);
 fontColorEl.addEventListener('input', () => {
   fontColorHex.textContent = fontColorEl.value;

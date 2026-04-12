@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(start cmd:*)"
+      "Bash(start cmd:*)",
+      "Bash(python -c ':*)",
+      "Bash(ls c:/Users/User/Desktop/code/signer/*.png)",
+      "Bash(python -c \"import sys; print\\(sys.version\\); import fitz; import fastapi; print\\('fitz ok'\\); print\\('fastapi ok'\\)\")",
+      "Bash(python main.py)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/)",
+      "Bash(curl -s http://localhost:8000/app.js)",
+      "Bash(curl -s http://localhost:8000/)"
     ]
   }
 }
