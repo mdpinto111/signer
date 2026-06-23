@@ -74,6 +74,8 @@ Python 3.10+
 
 ```bash
 cd web
+python -m venv .venv
+.\.venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
