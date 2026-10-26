@@ -5,6 +5,9 @@ const ZOOM = 1.5;
 const GAP = 20;           // px between rendered pages on canvas
 const DRAG_THRESHOLD = 6; // px — below this a drag is treated as a click
 const PAGE_SHADOW = 8;    // canvas shadow blur
+// Text is anchored at the top of the line; the baseline sits this many
+// font-size units below it. Must match TEXT_ASCENT in main.py.
+const TEXT_ASCENT = 0.8;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const S = {
@@ -120,6 +123,20 @@ function eventToCanvas(e) {
 
 // ── Canvas rendering ──────────────────────────────────────────────────────────
 
+/** Draw text with its top-left (LTR) or top-right (RTL) corner at canvas (x, y).
+ *  `size` is in PDF points, so it is scaled by ZOOM like the rendered page. */
+function drawText(text, x, y, size, fillStyle) {
+  const px = size * ZOOM;
+  ctx.save();
+  ctx.font         = `${Math.max(6, px)}px Arial, sans-serif`;
+  ctx.fillStyle    = fillStyle;
+  ctx.direction    = isRTL(text) ? 'rtl' : 'ltr';
+  ctx.textAlign    = isRTL(text) ? 'right' : 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(text, x, y + px * TEXT_ASCENT);
+  ctx.restore();
+}
+
 function totalCanvasHeight() {
   if (!S.pages.length) return 0;
   const last = S.pages.length - 1;
@@ -190,17 +207,7 @@ function drawFrame() {
         ctx.restore();
       }
     } else {
-      // Text placement
-      const text  = pl.text;
-      const size  = pl.size * ZOOM / 1.5;
-      const rtl   = isRTL(text);
-      ctx.save();
-      ctx.font      = `${Math.max(6, size)}px Arial, sans-serif`;
-      ctx.fillStyle = pl.color || '#000000';
-      ctx.textAlign = rtl ? 'right' : 'left';
-      ctx.textBaseline = 'top';
-      ctx.fillText(text, cv.x, cv.y);
-      ctx.restore();
+      drawText(pl.text, cv.x, cv.y, pl.size, pl.color || '#000000');
     }
   }
 
@@ -232,18 +239,10 @@ function drawFrame() {
       ctx.drawImage(S.sigImg, mx, my, w, h);
       ctx.globalAlpha = 1.0;
     } else if (S.mode === 'text') {
-      const text = textInput.value;
+      const text = textInput.value.trim();
       if (text) {
-        const size  = parseFloat(fontSizeEl.value) * ZOOM / 1.5;
-        const color = fontColorEl.value;
-        const rtl   = isRTL(text);
-        ctx.save();
-        ctx.font         = `${Math.max(6, size)}px Arial, sans-serif`;
-        ctx.fillStyle    = hexToRgba(color, 0.45);
-        ctx.textAlign    = rtl ? 'right' : 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(text, mx, my);
-        ctx.restore();
+        const size = Math.max(4, parseFloat(fontSizeEl.value) || 12);
+        drawText(text, mx, my, size, hexToRgba(fontColorEl.value, 0.45));
       }
     }
   }
@@ -362,6 +361,9 @@ async function loadSignature(file) {
     const img = new Image();
     img.onload = () => {
       S.sigImg = img;
+      // Keep the default width and derive the height from the image ratio
+      S.sigH = Math.max(4, Math.round(S.sigW * img.naturalHeight / img.naturalWidth));
+      sigH.value = S.sigH;
       // Show sidebar preview
       sigPreview.src    = url;
       sigPreview.style.display = 'block';
@@ -533,8 +535,12 @@ window.addEventListener('mouseup', (e) => {
     } else {
       if (dragged) {
         const rx0 = Math.min(x0, x1), ry0 = Math.min(y0, y1);
-        const w = Math.max(4, Math.round(Math.abs(x1 - x0) / ZOOM));
-        const h = Math.max(4, Math.round(Math.abs(y1 - y0) / ZOOM));
+        const boxW = Math.abs(x1 - x0) / ZOOM;
+        const boxH = Math.abs(y1 - y0) / ZOOM;
+        const ratio = S.sigImg.naturalHeight / S.sigImg.naturalWidth;
+        // Fit inside the drawn box while keeping the image proportions
+        const w = Math.max(4, Math.round(Math.min(boxW, boxH / ratio)));
+        const h = Math.max(4, Math.round(w * ratio));
         sigW.value = w;  sigH.value = h;
         S.sigW = w;      S.sigH = h;
         const pdf = canvasToPdf(rx0, ry0);
@@ -602,12 +608,21 @@ sigInput.addEventListener('change', () => {
 
 // ── Sidebar spinbox sync ──────────────────────────────────────────────────────
 
+// W and H stay linked to the signature's aspect ratio so it never looks stretched
+function sigRatio() {
+  return S.sigImg ? S.sigImg.naturalHeight / S.sigImg.naturalWidth : null;
+}
+
 sigW.addEventListener('input', () => {
   S.sigW = Math.max(4, parseInt(sigW.value, 10) || 120);
+  const ratio = sigRatio();
+  if (ratio) { S.sigH = Math.max(4, Math.round(S.sigW * ratio)); sigH.value = S.sigH; }
   scheduleRender();
 });
 sigH.addEventListener('input', () => {
   S.sigH = Math.max(4, parseInt(sigH.value, 10) || 50);
+  const ratio = sigRatio();
+  if (ratio) { S.sigW = Math.max(4, Math.round(S.sigH / ratio)); sigW.value = S.sigW; }
   scheduleRender();
 });
 

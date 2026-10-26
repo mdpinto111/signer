@@ -2,6 +2,7 @@
 PDF Signer Web Backend — FastAPI
 """
 
+import html
 import io
 import os
 import tempfile
@@ -29,7 +30,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def revalidate_static(request, call_next):
+    # Make browsers revalidate the frontend so a new deploy is picked up at once
+    response = await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 ZOOM = 1.5
+# Text placements are anchored at the top of the line; the baseline sits this
+# many font-size units below it. Must match TEXT_ASCENT in static/app.js.
+TEXT_ASCENT = 0.8
+_baseline_cache: dict[str, tuple[float, float]] = {}
 SESSION_ROOT = Path(tempfile.gettempdir()) / "pdf_signer"
 SESSION_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -43,7 +57,7 @@ def session_dir(session_id: str) -> Path:
 
 
 def make_transparent_png(img_bytes: bytes) -> bytes:
-    """Convert near-white pixels to transparent, return PNG bytes."""
+    """Convert near-white pixels to transparent, crop to the ink, return PNG bytes."""
     img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
     data = img.getdata()
     new_data = [
@@ -51,6 +65,14 @@ def make_transparent_png(img_bytes: bytes) -> bytes:
         for r, g, b, a in data
     ]
     img.putdata(new_data)
+    # Trim empty margins so the placed box matches the visible signature
+    bbox = img.getchannel("A").getbbox()
+    if bbox:
+        pad = 2
+        img = img.crop((
+            max(0, bbox[0] - pad), max(0, bbox[1] - pad),
+            min(img.width, bbox[2] + pad), min(img.height, bbox[3] + pad),
+        ))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -75,6 +97,39 @@ def find_font() -> str | None:
         if Path(c).exists():
             return c
     return None
+
+
+def html_baseline_offset(css: str, archive, family: str, size: float) -> float:
+    """Distance from the top of an htmlbox to the text baseline, in points.
+
+    MuPDF's offset is linear in the font size plus a small constant, so it is
+    measured once at two sizes and interpolated.
+    """
+    key = css + family
+    if key not in _baseline_cache:
+        def probe(probe_size: float) -> float:
+            doc = fitz.open()
+            page = doc.new_page()
+            page.insert_htmlbox(
+                fitz.Rect(0, 0, page.rect.width, 300),
+                f'<div style="font-family:{family};font-size:{probe_size}pt;'
+                f'line-height:1.0;margin:0;padding:0;">א</div>',
+                css=css, archive=archive,
+            )
+            origins = [
+                s["origin"][1]
+                for b in page.get_text("dict")["blocks"]
+                for l in b.get("lines", [])
+                for s in l["spans"]
+            ]
+            doc.close()
+            return origins[0] if origins else probe_size * TEXT_ASCENT
+
+        small, large = probe(10), probe(100)
+        slope = (large - small) / 90
+        _baseline_cache[key] = (small - 10 * slope, slope)
+    const, slope = _baseline_cache[key]
+    return const + slope * size
 
 
 def hex_to_rgb(color: str):
@@ -183,6 +238,13 @@ async def sign_pdf(req: SignRequest):
     doc = fitz.open(str(pdf_path))
     font_path = find_font()
 
+    # Use the same font for RTL (htmlbox) and LTR (insert_text) text
+    archive = fitz.Archive()
+    css = ""
+    if font_path:
+        archive.add(Path(font_path).read_bytes(), "signer-font.ttf")
+        css = '@font-face {font-family: signer; src: url(signer-font.ttf);}'
+
     for p in req.placements:
         if p.page < 0 or p.page >= len(doc):
             continue
@@ -198,20 +260,26 @@ async def sign_pdf(req: SignRequest):
             rtl = is_rtl(p.text)
             size = p.size
             cx, cy = p.cx, p.cy
+            baseline = cy + size * TEXT_ASCENT
 
             if rtl:
-                box = fitz.Rect(0, cy, cx + 4, cy + size * 1.8)
-                html = (
-                    f'<div style="font-family:Arial,sans-serif;font-size:{size}pt;'
-                    f'color:{p.color};margin:0;padding:0;'
-                    f'line-height:1.0;text-align:right;">{p.text}</div>'
+                # Right edge of the text sits exactly at cx; the box extends far
+                # to the left so the line never wraps or gets scaled down.
+                family = "signer" if font_path else "sans-serif"
+                top = baseline - html_baseline_offset(css, archive, family, size)
+                box = fitz.Rect(cx - page.rect.width * 2, top, cx, top + size * 2)
+                markup = (
+                    f'<div style="font-family:{family};font-size:{size}pt;'
+                    f'color:{html.escape(p.color)};margin:0;padding:0;white-space:nowrap;'
+                    f'line-height:1.0;text-align:right;">{html.escape(p.text)}</div>'
                 )
-                page.insert_htmlbox(box, html, archive=fitz.Archive())
+                page.insert_htmlbox(box, markup, css=css, archive=archive, scale_low=1)
             else:
-                point = fitz.Point(cx, cy + size * 0.75)
+                point = fitz.Point(cx, baseline)
                 rgb = hex_to_rgb(p.color)
                 if font_path:
-                    page.insert_text(point, p.text, fontsize=size,
+                    # fontfile is ignored by PyMuPDF unless a fontname is given
+                    page.insert_text(point, p.text, fontsize=size, fontname="signer",
                                      fontfile=font_path, color=rgb)
                 else:
                     page.insert_text(point, p.text, fontsize=size, color=rgb)
